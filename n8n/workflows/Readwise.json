@@ -1,0 +1,265 @@
+{
+  "id": "Q2Y78UOCSU3mXg8k",
+  "name": "Readwise",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -512,
+        -192
+      ],
+      "id": "b5e01608-b9fb-4540-95c7-2468901436ad",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -496,
+        144
+      ],
+      "id": "87f9875b-6a64-4c9f-9d20-6f40fad382d9",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://readwise.io/api/v2/review/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Token REDACTED"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -240,
+        -48
+      ],
+      "id": "6f25625a-a8a1-441b-a016-c19daf2a320e",
+      "name": "Coleta Highlights",
+      "retryOnFail": true,
+      "maxTries": 5
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "KXEqjhfOjWPMotQI",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/KXEqjhfOjWPMotQI",
+          "cachedResultName": "Discord Send v2"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "mensagem": "=*Mensagem:*  {{ $json.text }} \n*Titulo:* {{ $json.title }} \n*Autor:* {{ $json.author }}",
+            "canal": "sabedoria"
+          },
+          "matchingColumns": [
+            "message"
+          ],
+          "schema": [
+            {
+              "id": "canal",
+              "displayName": "canal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "mensagem",
+              "displayName": "mensagem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        608,
+        -48
+      ],
+      "id": "4de62ca8-5aef-4631-9a93-f4f2cb781fa4",
+      "name": "Envia Discord",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node (JavaScript)\n// Entrada: o item 0 contém o JSON exibido na sua mensagem (array com 1 objeto que tem \"highlights\").\n// Saída: 1 item com um highlight escolhido aleatoriamente.\n\nconst payload = $input.first().json;\n\nconst root = Array.isArray(payload) ? payload[0] : payload;\nconst highlights = Array.isArray(root?.highlights) ? root.highlights : [];\n\nif (highlights.length === 0) {\n  throw new Error('Nenhum highlight encontrado no JSON de entrada.');\n}\n\nconst idx = Math.floor(Math.random() * highlights.length);\nconst chosen = highlights[idx];\n\nconst meta = {};\n['review_id', 'review_url', 'review_completed'].forEach(k => {\n  if (root?.[k] !== undefined) meta[k] = root[k];\n});\n\nreturn [\n  {\n    json: {\n      ...meta,\n      pickedIndex: idx,\n      total: highlights.length,\n      ...chosen,\n    },\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        -48
+      ],
+      "id": "b56ed431-4885-41f3-9025-699d80b4da43",
+      "name": "Extrai somente 1 highlight"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Você é um tradutor especializado.\n\nAnalise o campo \"Título\" e o campo \"Texto\".\n\nRegras:\n- Detecte o idioma predominante.\n- Se o conteúdo já estiver em português brasileiro, mantenha exatamente como recebido.\n- Se estiver em outro idioma, traduza para português brasileiro.\n- Preserve sentido, tom, estrutura, links, emojis, hashtags, usernames, números e nomes próprios.\n- Não resuma.\n- Não melhore.\n- Não reescreva além do necessário para traduzir.\n- NÃO inclua o campo \"author\" na sua resposta. O autor é tratado fora deste passo.\n- Responda apenas com JSON válido descrito mais abaixo, sem markdown, sem comentários e sem texto adicional.\n\nJSON de saída brutalmente obrigatório:\n{\n  \"translated\": true,\n  \"sourceLanguage\": \"es\",\n  \"title\": \"resultado final\",\n  \"text\": \"resultado final\"\n}\n\nTítulo:\n{{ $json.title }}\n\nTexto:\n{{ $json.text }}\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_schema",
+              "name": "traducao_highlight",
+              "schema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"translated\": {\n      \"type\": \"boolean\"\n    },\n    \"sourceLanguage\": {\n      \"type\": \"string\"\n    },\n    \"title\": {\n      \"type\": \"string\"\n    },\n    \"text\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"translated\",\n    \"sourceLanguage\",\n    \"title\",\n    \"text\"\n  ],\n  \"additionalProperties\": false\n}",
+              "strict": true
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        128,
+        -144
+      ],
+      "id": "f44e45bb-adec-41ad-b519-1696709c4c1f",
+      "name": "Verifica Idioma e traduz para portugues",
+      "credentials": {
+        "openAiApi": {
+          "id": "hYrUsf8vqwp5XQzQ",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\n\n// Com Output Format = JSON Schema, o nó OpenAI já devolve o objeto parseado.\n// Mantém compatibilidade caso volte como string.\nconst content = raw?.output?.[0]?.content?.[0]?.text;\n\nif (content === undefined || content === null || content === '') {\n  throw new Error('Não foi encontrado conteúdo em output[0].content[0].text');\n}\n\nlet parsed = content;\nif (typeof content === 'string') {\n  try {\n    parsed = JSON.parse(content);\n  } catch (error) {\n    throw new Error('O conteúdo retornado pela OpenAI não é um JSON válido.');\n  }\n}\n\n// Autor vem direto do highlight original, nunca do modelo de tradução\n// (evita que o LLM devolva texto de instrução em vez do valor real).\nconst originalAuthor = $('Extrai somente 1 highlight').first().json.author || '';\n\nreturn [\n  {\n    json: {\n      title: parsed.title || '',\n      text: parsed.text || '',\n      author: originalAuthor\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        -16
+      ],
+      "id": "a7a0efac-38a1-482f-95bd-3299b62b610b",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Coleta Highlights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Coleta Highlights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Coleta Highlights": {
+      "main": [
+        [
+          {
+            "node": "Extrai somente 1 highlight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrai somente 1 highlight": {
+      "main": [
+        [
+          {
+            "node": "Verifica Idioma e traduz para portugues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verifica Idioma e traduz para portugues": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Envia Discord": {
+      "main": [
+        []
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Envia Discord",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Santiago",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "warM540Ajl3v3pSO",
+    "availableInMCP": false
+  }
+}
