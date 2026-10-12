@@ -1,0 +1,239 @@
+{
+  "id": "KXEqjhfOjWPMotQI",
+  "name": "Discord Send v2",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4.1-mini",
+        "prompt": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "=You are a Discord Embed JSON Generator integrated in an n8n workflow.\n\nINPUT VARIABLES (from previous node):\n- canal: Discord channel ID (preserve exactly)\n- mensagem: Text content to convert into embed\n\nYOUR TASK:\nAnalyze the mensagem content and create a Discord embed with appropriate formatting.\n\nRULES:\n\n1. TITLE (max 256 chars):\n   - Extract first sentence if descriptive and under 100 chars\n   - Create summary for longer messages\n   - Omit if message is very short (< 50 chars)\n\n2. DESCRIPTION (max 4096 chars):\n   - Use full message content or remaining text after title\n   - Preserve line breaks and basic formatting\n\n3. COLOR (decimal format):\n   - Success/Positive: 5763719 (green #58D68D)\n   - Warning/Alert: 16776960 (yellow #FFFF00)\n   - Error/Critical: 15548997 (red #ED4245)\n   - Info/Neutral: 3447003 (blue #3498DB)\n   - Default: 9807270 (gray #95A5A6)\n\n4. FIELDS (optional, max 25):\n   - Only use if message contains structured data (lists, key-value pairs)\n   - Each field: name (max 256 chars), value (max 1024 chars)\n   - inline: true for short values (< 50 chars), false otherwise\n\n5. ADDITIONAL (optional):\n   - timestamp: ISO 8601 format if time-relevant\n   - footer: for attribution or metadata\n\nERROR HANDLING:\n- If mensagem is empty/null: use description \"⚠️ Mensagem vazia\"\n- If mensagem exceeds limits: truncate with \"...\"\n\nOUTPUT FORMAT:\nReturn ONLY this JSON structure (no markdown, no code blocks, no extra text):\n\n{\n  \"channel\": \"VALUE_FROM_CANAL_VARIABLE\",\n  \"payload\": {\n    \"embeds\": [{\n      \"title\": \"Inferred or extracted title\",\n      \"description\": \"Message content here\",\n      \"color\": 3447003\n    }]\n  }\n}\n\nCRITICAL:\n- The \"channel\" value MUST be exactly the same as the input canal variable\n- Output pure JSON only - n8n will parse it directly\n- Do not wrap in ```json blocks\n- Do not add explanatory text before or after the JSON"
+            },
+            {
+              "content": "=canal: {{ $json.canal }} mensagem: {{ $json.mensagem }}"
+            }
+          ]
+        },
+        "options": {},
+        "requestOptions": {}
+      },
+      "id": "d7a5c7ff-059a-46d5-99d2-a47d15f4d05f",
+      "name": "OpenAI Chat",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        640,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "hYrUsf8vqwp5XQzQ",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// PARSER & ROUTER — um item por parte. Descrição acima de 4096 vira outro envio.\nconst channelMap = {\n  \"latam\": \"https://discord.com/api/webhooks/REDACTED\",\n  \"servidores\": \"https://discord.com/api/webhooks/REDACTED\",\n  \"financeiro\": \"https://discord.com/api/webhooks/REDACTED\",\n  \"email\": \"https://discord.com/api/webhooks/REDACTED\",\n  \"sabedoria\": \"https://discord.com/api/webhooks/REDACTED\",\n  \"falhas\": \"https://discord.com/api/webhooks/REDACTED\",\n  \"metar\": \"https://discord.com/api/webhooks/REDACTED\",\n  \"aviation\": \"https://discord.com/api/webhooks/REDACTED\",\n  \"noticias\":\"https://discord.com/api/webhooks/REDACTED\"\n};\n\nconst painelMap = {\n  \"latam\": \"https://srv1253487.hstgr.cloud/painel/api/hooks/latam/REDACTED\",\n  \"servidores\": \"https://srv1253487.hstgr.cloud/painel/api/hooks/servidores/REDACTED\",\n  \"financeiro\": \"https://srv1253487.hstgr.cloud/painel/api/hooks/financeiro/REDACTED\",\n  \"email\": \"https://srv1253487.hstgr.cloud/painel/api/hooks/email/REDACTED\",\n  \"sabedoria\": \"https://srv1253487.hstgr.cloud/painel/api/hooks/sabedoria/REDACTED\",\n  \"falhas\": \"https://srv1253487.hstgr.cloud/painel/api/hooks/erros_falhas/REDACTED\",\n  \"metar\": \"https://srv1253487.hstgr.cloud/painel/api/hooks/metar_taf/REDACTED\",\n  \"aviation\": \"https://srv1253487.hstgr.cloud/painel/api/hooks/aviation/REDACTED\",\n  \"noticias\": \"https://srv1253487.hstgr.cloud/painel/api/hooks/noticias/REDACTED\"\n};\n\nconst DESC_MAX = 4096;\n\nfunction chunksOf(text, limit) {\n  const lines = String(text || '').split('\\n');\n  const out = [];\n  let cur = '';\n  const push = (s) => { if (s) out.push(s); };\n  for (const line of lines) {\n    if (line.length > limit) {\n      push(cur);\n      cur = '';\n      for (let i = 0; i < line.length; i += limit) out.push(line.slice(i, i + limit));\n      continue;\n    }\n    const next = cur ? `${cur}\\n${line}` : line;\n    if (next.length > limit) {\n      push(cur);\n      cur = line;\n    } else {\n      cur = next;\n    }\n  }\n  push(cur);\n  return out.length ? out : [String(text || '')];\n}\n\nfunction parseAi(input) {\n  let aiData = input;\n  if (input && input.message && typeof input.message.content === 'string') {\n    try { aiData = JSON.parse(input.message.content); }\n    catch (e) { aiData = { channel: 'default', payload: { embeds: [{ description: input.message.content }] } }; }\n  } else if (typeof input === 'string') {\n    try { aiData = JSON.parse(input); }\n    catch (e) { aiData = { channel: 'default', payload: { embeds: [{ description: input }] } }; }\n  }\n  if (!aiData || typeof aiData !== 'object') aiData = { payload: { embeds: [] } };\n  if (!aiData.payload) aiData.payload = { embeds: [] };\n  if (!Array.isArray(aiData.payload.embeds)) aiData.payload.embeds = [];\n  return aiData;\n}\n\nconst partes = $('Partir mensagem Discord').all();\nconst origem = $('When Executed by Another Workflow').first().json || {};\nconst out = [];\n\n$input.all().forEach((item, idx) => {\n  const aiData = parseAi(item.json || {});\n  const canal = String(\n    partes[idx]?.json?.canal\n    || aiData.channel\n    || origem.canal\n    || ''\n  );\n  const targetUrl = channelMap[canal] || channelMap[aiData.channel] || channelMap['default'];\n  if (!targetUrl) throw new Error(`URL não encontrada para o canal: ${canal || aiData.channel}`);\n\n  const base = (aiData.payload.embeds && aiData.payload.embeds[0]) || { description: String(partes[idx]?.json?.mensagem || '') };\n  let pieces = chunksOf(String(base.description || ''), DESC_MAX);\n  if (!pieces.length) pieces = [String(base.description || '')];\n  const total = pieces.length;\n  pieces.forEach((description, i) => {\n    const embed = { ...base, description };\n    if (embed.title && String(embed.title).length > 256) embed.title = String(embed.title).slice(0, 253) + '...';\n    if (total > 1) {\n      const mark = `(${i + 1}/${total})`;\n      embed.title = embed.title ? `${String(embed.title).slice(0, 240)} ${mark}` : mark;\n    }\n    const painelUrl = painelMap[canal] || \"\";\n    out.push({ json: { webhook_url: targetUrl, painel_url: painelUrl, payload: { embeds: [embed] } } });\n  });\n});\n\nreturn out;\n",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "5d6b8cad-36c6-4ebc-92ce-05429d29c727",
+      "name": "Router & Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.webhook_url }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "embeds",
+              "value": "={{ $json.payload.embeds }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bebaae96-2f1a-447a-9604-70066a533cd5",
+      "name": "HTTP Discord Sender",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1088,
+        0
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "maxTries": 5
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "canal"
+            },
+            {
+              "name": "mensagem"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        288,
+        0
+      ],
+      "id": "db046672-db1b-44f7-8bef-b93f6a7a8c11",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4.1-mini",
+        "prompt": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "=You are a Discord Embed JSON Generator. \nYou receive a JSON input with {{ $json.canal }} and \n{{ $json.mensagem }}\nYOUR TASK: \n1. Create a Discord Embed based on the {{ $json.mensagem }} text content.\nInfer title, color, fields, and description from the text. 2. Output a valid JSON structure. \n3. **CRITICAL**: The output JSON MUST include a 'channel' field that MATCHES EXACTLY the 'canal' value from the input. Do not change it.  \nDo not add bloque quotes such as ```json\\n\nOUTPUT FORMAT: \n{   \"channel\": \"{{ $json.canal }}\",    \n\"payload\": {     \n      \"embeds\": [{       \n          \"title\": \"Infer title\",       \n          \"description\": \"Infer content from message\",\n          \"color\": 123456,      \n          \"fields\": [ {\"name\": \"Field\", \n                    \"value\": \"Value\", \n          \"inline\": true} ]     }]   } }"
+            },
+            {}
+          ]
+        },
+        "options": {},
+        "requestOptions": {}
+      },
+      "id": "5ae053a0-f796-4166-a2a9-1309f59c946a",
+      "name": "Backup",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        0,
+        352
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "hYrUsf8vqwp5XQzQ",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const MAX = 4096;\nconst LIMIT = 4000;\n\nfunction chunksOf(text, limit) {\n  if (text.length <= limit) return [text];\n  const lines = String(text).split('\\n');\n  const out = [];\n  let cur = '';\n  const push = (s) => { if (s) out.push(s); };\n  for (const line of lines) {\n    if (line.length > limit) {\n      push(cur);\n      cur = '';\n      for (let i = 0; i < line.length; i += limit) out.push(line.slice(i, i + limit));\n      continue;\n    }\n    const next = cur ? `${cur}\\n${line}` : line;\n    if (next.length > limit) {\n      push(cur);\n      cur = line;\n    } else {\n      cur = next;\n    }\n  }\n  push(cur);\n  return out.length ? out : [String(text)];\n}\n\nfunction blocksOf(message) {\n  const parts = message.split(/\\n\\n(?=\\*[A-Z]{4}\\*(?:\\n|$))/);\n  if (parts.length > 1) return parts;\n  const paras = message.split(/\\n\\n/);\n  return paras.length > 1 ? paras : [message];\n}\n\nfunction pack(message) {\n  if (message.length <= MAX) return [message];\n  const blocks = blocksOf(message).flatMap((b) => chunksOf(b, LIMIT));\n  const packed = [];\n  let cur = '';\n  for (const block of blocks) {\n    const sep = cur ? '\\n\\n' : '';\n    if (cur && cur.length + sep.length + block.length > LIMIT) {\n      packed.push(cur);\n      cur = block;\n    } else {\n      cur = cur + sep + block;\n    }\n  }\n  if (cur) packed.push(cur);\n  return packed.length ? packed : [message];\n}\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const canal = j.canal;\n  const mensagem = String(j.mensagem ?? '');\n  const packed = pack(mensagem);\n  const total = packed.length;\n  packed.forEach((text, i) => {\n    const body = total > 1 ? `(${i + 1}/${total})\\n${text}` : text;\n    out.push({ json: { canal, mensagem: body, parte: i + 1, partes: total } });\n  });\n}\nreturn out;\n"
+      },
+      "id": "pm-partir-mensagem-discord",
+      "name": "Partir mensagem Discord",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "id": "9e6bd4b7-ab39-4a73-9dbf-e8ea3879dcdf",
+      "name": "Painel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1088,
+        208
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "preBuiltAgentsCalloutHttpRequest": "",
+        "curlImport": "",
+        "method": "POST",
+        "url": "={{ $json.painel_url }}",
+        "authentication": "none",
+        "provideSslCertificates": false,
+        "sendQuery": false,
+        "sendHeaders": false,
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "embeds",
+              "value": "={{ $json.payload.embeds }}"
+            }
+          ]
+        },
+        "options": {},
+        "infoMessage": ""
+      }
+    }
+  ],
+  "connections": {
+    "OpenAI Chat": {
+      "main": [
+        [
+          {
+            "node": "Router & Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Router & Parse": {
+      "main": [
+        [
+          {
+            "node": "HTTP Discord Sender",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Painel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Partir mensagem Discord",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Partir mensagem Discord": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Santiago",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "warM540Ajl3v3pSO"
+  }
+}
